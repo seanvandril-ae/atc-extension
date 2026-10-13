@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "AddEvent ATC Link",
+  "version": "0.1.0",
+  "description": "Create an add-to-calendar link for an event without leaving the page you're on.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.addevent.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AddEvent ATC Link"
+  }
+}

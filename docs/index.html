@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Add event to your calendar</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #fff;
+      color: #333;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    main {
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 48px 28px;
+    }
+
+    h1 {
+      font-size: 44px;
+      font-weight: 400;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      margin-bottom: 20px;
+    }
+
+    .meta {
+      font-size: 19px;
+      line-height: 1.5;
+      color: #888;
+    }
+
+    hr {
+      border: 0;
+      border-top: 1px solid #ccc;
+      margin: 24px 0 18px;
+    }
+
+    .buttons { display: flex; flex-direction: column; gap: 11px; }
+
+    .buttons a {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 55px;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 19px;
+      text-decoration: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      transition: transform 0.1s, filter 0.1s;
+    }
+
+    .buttons a:hover { filter: brightness(1.08); }
+    .buttons a:active { transform: scale(0.985); }
+
+    .apple      { background: #000; }
+    .google     { background: #5185ec; }
+    .office365  { background: #c75633; }
+    .outlook    { background: #ccaa4c; }
+    .outlookcom { background: #4170ba; }
+    .yahoo      { background: #560ccb; }
+
+    .error { font-size: 19px; color: #888; }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <h1>Add event to your calendar</h1>
+    <p class="meta" id="title"></p>
+    <p class="meta" id="when"></p>
+    <hr>
+    <div class="buttons">
+      <a class="apple" id="apple" download="event.ics">Apple</a>
+      <a class="google" id="google" target="_blank" rel="noopener">Google</a>
+      <a class="office365" id="office365" target="_blank" rel="noopener">Office 365</a>
+      <a class="outlook" id="outlook" download="event.ics">Outlook</a>
+      <a class="outlookcom" id="outlookcom" target="_blank" rel="noopener">Outlook.com</a>
+      <a class="yahoo" id="yahoo" target="_blank" rel="noopener">Yahoo</a>
+    </div>
+  </main>
+
+  <script>
+    // URL params: t = title, s = start in UTC (YYYYMMDDTHHMMZ), e = end in UTC (YYYYMMDDTHHMMZ),
+    // l = location (optional), n = description (optional)
+    const params = new URLSearchParams(location.search);
+    const title = params.get("t");
+    const place = params.get("l") || "";
+    const notes = params.get("n") || "";
+    const start = parseUtc(params.get("s"));
+    const end = parseUtc(params.get("e"));
+
+    if (!title || !start || !end) {
+      document.getElementById("app").innerHTML =
+        '<h1>Add event to your calendar</h1><p class="error">This invite link is incomplete. Ask the sender for a new one.</p>';
+    } else {
+      render();
+    }
+
+    function parseUtc(value) {
+      const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})Z$/.exec(value || "");
+      if (!match) return null;
+      const [, y, mo, d, h, mi] = match.map(Number);
+      return new Date(Date.UTC(y, mo - 1, d, h, mi));
+    }
+
+    function render() {
+      document.title = `${title} · Add to calendar`;
+      document.getElementById("title").textContent = title;
+
+      // Shown in the viewer's own time zone
+      const dateOpts = { weekday: "long", month: "long", day: "numeric", year: "numeric" };
+      const day = date => date.toLocaleDateString(undefined, dateOpts);
+      const t = (date, opts) => date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", ...opts });
+      const sameDay = day(start) === day(end);
+      document.getElementById("when").textContent = sameDay
+        ? `${day(start)}, ${t(start)} – ${t(end, { timeZoneName: "short" })}`
+        : `${day(start)}, ${t(start)} – ${day(end)}, ${t(end, { timeZoneName: "short" })}`;
+
+      const compact = date => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");  // 20260924T230000Z
+      const iso = date => date.toISOString().replace(/\.\d{3}/, "");                          // 2026-09-24T23:00:00Z
+      const q = obj => new URLSearchParams(obj).toString();
+
+      const ics = [
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AddEvent ATC Link//EN", "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        `UID:${compact(start)}-${Math.random().toString(36).slice(2)}@addevent-atc-link`,
+        `DTSTAMP:${compact(new Date())}`,
+        `DTSTART:${compact(start)}`,
+        `DTEND:${compact(end)}`,
+        `SUMMARY:${escapeIcs(title)}`,
+        place && `LOCATION:${escapeIcs(place)}`,
+        notes && `DESCRIPTION:${escapeIcs(notes)}`,
+        "BEGIN:VALARM", "TRIGGER:-PT10M", "ACTION:DISPLAY", "DESCRIPTION:Reminder", "END:VALARM",
+        "END:VEVENT", "END:VCALENDAR"
+      ].filter(Boolean).join("\r\n");
+      const icsHref = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics);
+
+      const msCompose = host => `https://${host}/calendar/0/action/compose?` + q({
+        path: "/calendar/action/compose", rru: "addevent",
+        subject: title, startdt: iso(start), enddt: iso(end), location: place, body: notes
+      });
+
+      const links = {
+        apple: icsHref,
+        outlook: icsHref,
+        google: "https://calendar.google.com/calendar/render?" + q({
+          action: "TEMPLATE", text: title, dates: `${compact(start)}/${compact(end)}`, location: place, details: notes
+        }),
+        office365: msCompose("outlook.office.com"),
+        outlookcom: msCompose("outlook.live.com"),
+        yahoo: "https://calendar.yahoo.com/?" + q({
+          v: "60", title: title, st: compact(start), et: compact(end), in_loc: place, desc: notes
+        })
+      };
+      for (const [id, href] of Object.entries(links)) document.getElementById(id).href = href;
+    }
+
+    function escapeIcs(s) {
+      return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+    }
+  </script>
+</body>
+</html>
